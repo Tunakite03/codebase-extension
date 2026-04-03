@@ -1,0 +1,120 @@
+{
+   "name": "codebase-memory-mcp",
+   "displayName": "Codebase Memory MCP",
+   "description": "VS Code extension for codebase-memory-mcp — high-performance code intelligence MCP server with knowledge graph, 66 languages, sub-ms queries",
+   "version": "0.4.1",
+   "publisher": "your-publisher-id",
+   "repository": {
+      "type": "git",
+      "url": "https://github.com/Tunakite03/codebase-memory-mcp"
+   },
+   "engines": {
+      "vscode": "^1.85.0"
+   },
+   "categories": [
+      "Other"
+   ],
+   "activationEvents": [
+      "onStartupFinished"
+   ],
+   "main": "./out/extension.js",
+   "contributes": {
+      "viewsContainers": {
+         "activitybar": [
+            {
+               "id": "context-engine",
+               "title": "Codebase Memory",
+               "icon": "$(circuit-board)"
+            }
+         ]
+      },
+      "views": {
+         "context-engine": [
+            {
+               "id": "contextEngine.panel",
+               "name": "Codebase Memory",
+               "type": "webview"
+            }
+         ]
+      },
+      "commands": [
+         {
+            "command": "contextEngine.startServer",
+            "title": "Start MCP Server",
+            "icon": "$(play)",
+            "category": "Codebase Memory"
+         },
+         {
+            "command": "contextEngine.stopServer",
+            "title": "Stop MCP Server",
+            "icon": "$(stop)",
+            "category": "Codebase Memory"
+         },
+         {
+            "command": "contextEngine.indexRepo",
+            "title": "Index Repository",
+            "icon": "$(database)",
+            "category": "Codebase Memory"
+         },
+         {
+            "command": "contextEngine.forceReindex",
+            "title": "Force Re-index",
+            "icon": "$(refresh)",
+            "category": "Codebase Memory"
+         },
+         {
+            "command": "contextEngine.setupAgents",
+            "title": "Setup Agent Configs",
+            "icon": "$(settings-gear)",
+            "category": "Codebase Memory"
+         },
+         {
+            "command": "contextEngine.installBinary",
+            "title": "Install Binary",
+            "icon": "$(cloud-download)",
+            "category": "Codebase Memory"
+         },
+         {
+            "command": "contextEngine.viewLogs",
+            "title": "View Logs",
+            "icon": "$(list-unordered)",
+            "category": "Codebase Memory"
+         },
+         {
+            "command": "contextEngine.refresh",
+            "title": "Refresh",
+            "icon": "$(refresh)",
+            "category": "Codebase Memory"
+         }
+      ],
+      "menus": {
+         "view/title": [
+            {
+               "command": "contextEngine.startServer",
+               "when": "view == contextEngine.panel && !contextEngine.running",
+               "group": "navigation@1"
+            },
+            {
+               "command": "contextEngine.stopServer",
+               "when": "view == contextEngine.panel && contextEngine.running",
+               "group": "navigation@1"
+            },
+            {
+               "command": "contextEngine.refresh",
+               "when": "view == contextEngine.panel",
+               "group": "navigation@2"
+            }
+         ]
+      }
+   },
+   "scripts": {
+      "vscode:prepublish": "npm run compile",
+      "compile": "tsc -p ./",
+      "watch": "tsc -watch -p ./"
+   },
+   "devDependencies": {
+      "@types/node": "^20.0.0",
+      "@types/vscode": "^1.85.0",
+      "typescript": "^5.3.0"
+   }
+}
