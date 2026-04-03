@@ -38,7 +38,12 @@ export function startServer(context: vscode.ExtensionContext): void {
    if (!state.pollTimer) {
       state.pollTimer = setInterval(() => pollStats(workspace), 8000);
    }
-   pollStats(workspace);
+   pollStats(workspace).then(() => {
+      if (state.stats.nodes === 0 && workspace && state.isRunning) {
+         log('[INFO] No indexed data found — starting auto-index');
+         indexRepository(workspace);
+      }
+   });
 }
 
 export function stopServer(): void {
@@ -80,12 +85,17 @@ export async function pollStats(workspace: string): Promise<void> {
       state.stats.projects = projects;
       state.stats.nodes = totalNodes;
       state.stats.edges = totalEdges;
-      state.stats.lastIndexed = new Date();
-      state.statusBarItem.text = `$(circuit-board) ${totalNodes.toLocaleString()} nodes`;
+      if (totalNodes > 0) {
+         state.stats.lastIndexed = new Date();
+      }
+      state.statusBarItem.text =
+         totalNodes > 0
+            ? `$(circuit-board) ${totalNodes.toLocaleString()} nodes`
+            : `$(circuit-board) ${DISPLAY_NAME}: running`;
       state.webviewProvider.update();
       writeCodebaseDir(workspace);
-   } catch {
-      // silently ignore poll errors
+   } catch (err: unknown) {
+      log(`[POLL ERROR] ${err instanceof Error ? err.message : String(err)}`);
    }
 }
 
@@ -96,6 +106,10 @@ export async function indexRepository(workspace: string): Promise<void> {
    }
    if (!workspace) {
       vscode.window.showErrorMessage(`${DISPLAY_NAME}: No workspace folder open.`);
+      return;
+   }
+   if (state.stats.isIndexing) {
+      log('[INFO] Indexing already in progress, skipping duplicate request');
       return;
    }
 
