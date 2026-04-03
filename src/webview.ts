@@ -96,7 +96,7 @@ export class CBMWebviewProvider implements vscode.WebviewViewProvider {
                Stop Server
             </button>
             <button class="btn" data-cmd="indexRepo">
-               <svg class="btn-icon" viewBox="0 0 16 16"><path d="M8 1.5v13M1.5 8h13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none"/><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" stroke="currentColor" stroke-width="1" stroke-linecap="round" fill="none" opacity="0"/><animateTransform attributeName="transform" type="rotate" from="0 8 8" to="360 8 8" dur="1s" repeatCount="0"/></svg>
+               <svg class="btn-icon" viewBox="0 0 16 16"><path d="M8 1.5v13M1.5 8h13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none"/><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" stroke="currentColor" stroke-width="1" stroke-linecap="round" fill="none" opacity="0"/></svg>
                Index / Re-index
             </button>`;
       } else {

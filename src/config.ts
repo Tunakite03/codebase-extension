@@ -103,7 +103,16 @@ export function setupAgentConfigs(workspace: string): void {
 
    const instructions = `## Codebase Memory MCP
 
-Before reading files or making code changes, prefer using MCP graph tools.
+**MANDATORY: use Codebase Memory MCP graph tools FIRST — before reading files or making code changes.**
+
+This rule applies to every request involving this codebase.
+
+### Workflow
+
+1. Call \`get_architecture(project)\` FIRST to understand the codebase structure.
+2. Use \`search_graph\` to find relevant symbols, \`trace_call_path\` for call chains.
+3. Use \`get_code_snippet\` to read specific function implementations.
+4. Only use \`read_file\` when you need exact raw content to edit a specific line.
 
 ### Available Tools (14 MCP tools)
 
@@ -124,12 +133,65 @@ Before reading files or making code changes, prefer using MCP graph tools.
 - \`search_code(pattern, project)\` — Grep-like text search within indexed files
 - \`manage_adr(action)\` — CRUD for Architecture Decision Records
 - \`ingest_traces(traces)\` — Ingest runtime traces to validate HTTP edges
+`;
+
+   const workflowInstruction = `---
+applyTo: '**'
+---
+
+## MANDATORY: Always use Codebase Memory MCP to read the codebase
+
+**This rule applies to EVERY request that involves this codebase.**
+
+### Rules
+
+1. **Call \`mcp_codebase-memo_get_architecture\` FIRST** — before writing code, editing files, or answering any question about the codebase.
+2. Use the returned context to make targeted, accurate changes.
+3. **Do NOT use** \`grep_search\`, \`file_search\`, \`semantic_search\`, or \`read_file\` for initial codebase exploration.
+4. Re-query only if additional context is needed during implementation.
 
 ### Workflow
-1. Call \`get_graph_schema\` to understand the project structure
-2. Use \`search_graph\` to find relevant symbols
-3. Use \`trace_call_path\` to understand call chains
-4. Use \`get_code_snippet\` to read specific function implementations
+
+\`\`\`
+mcp_codebase-memo_get_architecture({ "project": "<project>" })   // start here
+mcp_codebase-memo_search_graph({ "name_pattern": "<symbol>" })   // find symbols
+mcp_codebase-memo_get_code_snippet({ "qualified_name": "<fn>" }) // read code
+\`\`\`
+
+### Why
+
+- Pre-built index covers the entire codebase with relevance ranking.
+- Faster and more accurate than manual file search.
+- Prevents reading stale files or following ghost references.
+`;
+
+   const toolsInstruction = `---
+applyTo: '**'
+---
+
+## Codebase Memory MCP — Available Tools
+
+**MANDATORY: Use these tools instead of grep, file search, or reading files directly.**
+
+### Indexing Tools
+
+- \`index_repository(repo_path)\` — Index a repository into the knowledge graph
+- \`list_projects\` — List all indexed projects with node/edge counts
+- \`delete_project(project)\` — Remove a project and all its graph data
+- \`index_status(project)\` — Check indexing status and health
+
+### Querying Tools
+
+- \`get_architecture(project)\` — **START HERE**: codebase overview, languages, packages, routes, hotspots
+- \`search_graph(name_pattern, label, file_pattern)\` — Structured search by label, name, or file
+- \`get_code_snippet(qualified_name)\` — Read source code for a specific function
+- \`trace_call_path(function_name, direction, depth)\` — BFS call chain traversal
+- \`detect_changes(project)\` — Map git diff to affected symbols + risk assessment
+- \`query_graph(query)\` — Execute Cypher-like graph queries (read-only)
+- \`get_graph_schema(project)\` — Node/edge counts and relationship patterns
+- \`search_code(pattern, project)\` — Grep-like text search within indexed files
+- \`manage_adr(action)\` — CRUD for Architecture Decision Records
+- \`ingest_traces(traces)\` — Ingest runtime traces to validate HTTP edges
 `;
 
    const write = (dir: string, file: string, content: string) => {
@@ -139,11 +201,13 @@ Before reading files or making code changes, prefer using MCP graph tools.
 
    write(path.join(workspace, '.vscode'), 'mcp.json', JSON.stringify(vscodeMcp, null, 2));
    write(path.join(workspace, '.github'), 'copilot-instructions.md', instructions);
+   write(path.join(workspace, '.github', 'instructions'), 'codebase-workflow.instructions.md', workflowInstruction);
+   write(path.join(workspace, '.github', 'instructions'), 'codebase-tools.instructions.md', toolsInstruction);
    write(path.join(workspace, '.claude'), 'CLAUDE.md', instructions);
    write(path.join(workspace, '.cursor'), 'mcp.json', JSON.stringify(cursorMcp, null, 2));
 
    vscode.window.showInformationMessage(
-      `${DISPLAY_NAME}: Agent configs written to .vscode/, .github/, .claude/, .cursor/`,
+      `${DISPLAY_NAME}: Agent configs written to .vscode/, .github/, .github/instructions/, .claude/, .cursor/`,
    );
 }
 
