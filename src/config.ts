@@ -101,11 +101,11 @@ export async function setupAgentConfigs(workspace: string): Promise<void> {
    const existing = targets.filter((t) => fs.existsSync(path.join(workspace, t)));
    if (existing.length > 0) {
       const choice = await vscode.window.showWarningMessage(
-         `${DISPLAY_NAME}: This will overwrite: ${existing.join(', ')}`,
+         `${DISPLAY_NAME}: Will merge into existing files: ${existing.join(', ')}`,
          { modal: true },
-         'Overwrite',
+         'Continue',
       );
-      if (choice !== 'Overwrite') {
+      if (choice !== 'Continue') {
          return;
       }
    }
@@ -238,18 +238,83 @@ This rule applies to every request involving this codebase.
       },
    };
 
-   const write = (dir: string, file: string, content: string) => {
-      fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(path.join(dir, file), content);
+   const CBM_SECTION_MARKER = '## Codebase Memory MCP';
+
+   /** Recursively deep-merge source into target, preserving sibling keys at every level. */
+   const deepMerge = (target: Record<string, unknown>, source: Record<string, unknown>): Record<string, unknown> => {
+      const result = { ...target };
+      for (const key of Object.keys(source)) {
+         if (
+            typeof source[key] === 'object' &&
+            source[key] !== null &&
+            !Array.isArray(source[key]) &&
+            typeof result[key] === 'object' &&
+            result[key] !== null &&
+            !Array.isArray(result[key])
+         ) {
+            result[key] = deepMerge(result[key] as Record<string, unknown>, source[key] as Record<string, unknown>);
+         } else {
+            result[key] = source[key];
+         }
+      }
+      return result;
    };
 
-   write(path.join(workspace, '.vscode'), 'mcp.json', JSON.stringify(vscodeMcp, null, 2));
-   write(path.join(workspace, '.github'), 'copilot-instructions.md', instructions);
-   write(path.join(workspace, '.github', 'instructions'), 'codebase-workflow.instructions.md', workflowInstruction);
-   write(workspace, 'AGENTS.md', agentsContent);
-   write(path.join(workspace, '.claude'), 'CLAUDE.md', instructions);
-   write(path.join(workspace, '.cursor'), 'mcp.json', JSON.stringify(cursorMcp, null, 2));
-   write(path.join(workspace, '.zed'), 'settings.json', JSON.stringify(zedSettings, null, 2));
+   const mergeJson = (dir: string, file: string, source: Record<string, unknown>) => {
+      fs.mkdirSync(dir, { recursive: true });
+      const filePath = path.join(dir, file);
+      let merged = source;
+      if (fs.existsSync(filePath)) {
+         try {
+            const existing = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+            merged = deepMerge(existing, source);
+         } catch {
+            merged = source;
+         }
+      }
+      fs.writeFileSync(filePath, JSON.stringify(merged, null, 2));
+   };
+
+   /**
+    * Upsert a markdown section: if the CBM section already exists, replace it;
+    * otherwise append to the end of the file.
+    */
+   const upsertMarkdown = (dir: string, file: string, content: string) => {
+      fs.mkdirSync(dir, { recursive: true });
+      const filePath = path.join(dir, file);
+      if (fs.existsSync(filePath)) {
+         const existing = fs.readFileSync(filePath, 'utf8');
+         const markerIdx = existing.indexOf(CBM_SECTION_MARKER);
+         if (markerIdx !== -1) {
+            // Find the end of the CBM section: next heading at the same or higher level, or EOF
+            const afterMarker = existing.substring(markerIdx + CBM_SECTION_MARKER.length);
+            const nextHeadingMatch = afterMarker.match(/\n(?=## (?!#))/);
+            const sectionEnd = nextHeadingMatch
+               ? markerIdx + CBM_SECTION_MARKER.length + (nextHeadingMatch.index as number)
+               : existing.length;
+            const before = existing.substring(0, markerIdx);
+            const after = existing.substring(sectionEnd);
+            fs.writeFileSync(filePath, before + content.trimEnd() + '\n' + after);
+         } else {
+            const separator = existing.endsWith('\n') ? '\n' : '\n\n';
+            fs.writeFileSync(filePath, existing + separator + content);
+         }
+      } else {
+         fs.writeFileSync(filePath, content);
+      }
+   };
+
+   mergeJson(path.join(workspace, '.vscode'), 'mcp.json', vscodeMcp);
+   upsertMarkdown(path.join(workspace, '.github'), 'copilot-instructions.md', instructions);
+   upsertMarkdown(
+      path.join(workspace, '.github', 'instructions'),
+      'codebase-workflow.instructions.md',
+      workflowInstruction,
+   );
+   upsertMarkdown(workspace, 'AGENTS.md', agentsContent);
+   upsertMarkdown(path.join(workspace, '.claude'), 'CLAUDE.md', instructions);
+   mergeJson(path.join(workspace, '.cursor'), 'mcp.json', cursorMcp);
+   mergeJson(path.join(workspace, '.zed'), 'settings.json', zedSettings);
 
    vscode.window.showInformationMessage(
       `${DISPLAY_NAME}: Agent configs written to .vscode/, .github/, .github/instructions/, .claude/, .cursor/, .zed/`,
