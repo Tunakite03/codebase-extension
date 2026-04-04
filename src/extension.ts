@@ -45,7 +45,8 @@ export function activate(context: vscode.ExtensionContext): void {
          if (!workspace || !state.resolvedBinary) {
             return;
          }
-         const projectName = path.basename(normalizePath(workspace));
+         // Build the same slug the binary uses: replace each ':', '/', '\' with '-'
+         const projectName = normalizePath(workspace).replace(/[:/\\]/g, '-');
          runCli(state.resolvedBinary, ['cli', 'delete_project', JSON.stringify({ project: projectName })], 10000)
             .catch(() => {
                /* may not exist */
@@ -87,7 +88,12 @@ export function activate(context: vscode.ExtensionContext): void {
       // Auto re-index on file changes (debounced 5s)
       state.fileWatcher = vscode.workspace.createFileSystemWatcher('**/*', false, false, false);
       const DEBOUNCE_MS = 5000;
-      const scheduleReindex = () => {
+      const scheduleReindex = (uri?: vscode.Uri) => {
+         // Ignore changes inside .codebase/ — those are DB files written during indexing
+         // and would otherwise cause an infinite reindex loop.
+         if (uri && uri.fsPath.replace(/\\/g, '/').includes('/.codebase/')) {
+            return;
+         }
          if (!state.isRunning || state.stats.isIndexing) {
             return;
          }
@@ -102,9 +108,9 @@ export function activate(context: vscode.ExtensionContext): void {
             }
          }, DEBOUNCE_MS);
       };
-      state.fileWatcher.onDidChange(scheduleReindex);
-      state.fileWatcher.onDidCreate(scheduleReindex);
-      state.fileWatcher.onDidDelete(scheduleReindex);
+      state.fileWatcher.onDidChange((uri) => scheduleReindex(uri));
+      state.fileWatcher.onDidCreate((uri) => scheduleReindex(uri));
+      state.fileWatcher.onDidDelete((uri) => scheduleReindex(uri));
       context.subscriptions.push(state.fileWatcher);
    }
 }
