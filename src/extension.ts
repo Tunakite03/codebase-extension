@@ -108,7 +108,7 @@ export function activate(context: vscode.ExtensionContext): void {
             state.watchDebounce = null;
             if (state.isRunning && !state.stats.isIndexing) {
                log('[INFO] File change detected — triggering incremental index');
-               indexRepository(workspace);
+               indexRepository(workspace, true);
             }
          }, DEBOUNCE_MS);
       };

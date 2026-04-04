@@ -218,7 +218,7 @@ export async function removeRepository(projectName?: string): Promise<void> {
    }
 }
 
-export async function indexRepository(workspace: string): Promise<void> {
+export async function indexRepository(workspace: string, silent: boolean = false): Promise<void> {
    if (!state.resolvedBinary) {
       vscode.window.showErrorMessage(`${DISPLAY_NAME}: Binary not found.`);
       return;
@@ -244,7 +244,9 @@ export async function indexRepository(workspace: string): Promise<void> {
          600000,
       ); // 10 min timeout for large repos
       log(`[INDEX] ${out.trim()}`);
-      vscode.window.showInformationMessage(`${DISPLAY_NAME}: Indexing complete.`);
+      if (!silent) {
+         vscode.window.showInformationMessage(`${DISPLAY_NAME}: Indexing complete.`);
+      }
       state.stats.lastIndexed = new Date();
       await pollStats(workspace);
       writeCodebaseDir(workspace);
