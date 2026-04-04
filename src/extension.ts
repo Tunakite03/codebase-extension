@@ -5,7 +5,7 @@ import { state } from './state';
 import { log, initLogFile } from './logger';
 import { findBinary, normalizePath } from './binary';
 import { runCli } from './cli';
-import { startServer, stopServer, pollStats, indexRepository } from './server';
+import { startServer, stopServer, pollStats, indexRepository, addRepository, removeRepository } from './server';
 import { CBMWebviewProvider } from './webview';
 import { setupAgentConfigs, installBinary, initCacheDir } from './config';
 
@@ -61,6 +61,10 @@ export function activate(context: vscode.ExtensionContext): void {
          setupAgentConfigs(workspace);
       }),
       vscode.commands.registerCommand('contextEngine.installBinary', () => installBinary()),
+      vscode.commands.registerCommand('contextEngine.addRepo', () => addRepository()),
+      vscode.commands.registerCommand('contextEngine.removeRepo', (projectName?: string) =>
+         removeRepository(projectName),
+      ),
       vscode.commands.registerCommand('contextEngine.viewLogs', () => {
          if (state.logFilePath) {
             const uri = vscode.Uri.file(state.logFilePath);

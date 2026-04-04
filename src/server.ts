@@ -103,6 +103,121 @@ export async function pollStats(workspace: string): Promise<void> {
    }
 }
 
+export async function addRepository(): Promise<void> {
+   if (!state.resolvedBinary) {
+      vscode.window.showErrorMessage(`${DISPLAY_NAME}: Binary not found.`);
+      return;
+   }
+   if (!vscode.workspace.workspaceFolders) {
+      vscode.window.showWarningMessage(`${DISPLAY_NAME}: No workspace open.`);
+      return;
+   }
+   const uris = await vscode.window.showOpenDialog({
+      canSelectFolders: true,
+      canSelectFiles: false,
+      canSelectMany: false,
+      openLabel: 'Add Repository',
+      title: `${DISPLAY_NAME}: Select a repository folder to add`,
+   });
+   if (!uris || uris.length === 0) {
+      return;
+   }
+   const repoUri = uris[0];
+   const repoPath = repoUri.fsPath;
+
+   // Add to VS Code workspace (multi-root) if not already present
+   const alreadyInWorkspace = vscode.workspace.workspaceFolders.some(
+      (f) => normalizePath(f.uri.fsPath) === normalizePath(repoPath),
+   );
+   if (!alreadyInWorkspace) {
+      const addedOk = vscode.workspace.updateWorkspaceFolders(vscode.workspace.workspaceFolders.length, 0, {
+         uri: repoUri,
+         name: path.basename(repoPath),
+      });
+      if (!addedOk) {
+         vscode.window.showErrorMessage(`${DISPLAY_NAME}: Failed to add folder to workspace.`);
+         return;
+      }
+      log(`[INFO] Added to workspace: ${repoPath}`);
+   }
+
+   // Index the repository
+   log(`[INFO] Adding repository: ${repoPath}`);
+   await indexRepository(repoPath);
+}
+
+export async function removeRepository(projectName?: string): Promise<void> {
+   if (!state.resolvedBinary) {
+      vscode.window.showErrorMessage(`${DISPLAY_NAME}: Binary not found.`);
+      return;
+   }
+   if (state.stats.projects.length === 0) {
+      vscode.window.showInformationMessage(`${DISPLAY_NAME}: No indexed projects to remove.`);
+      return;
+   }
+
+   let selectedLabel: string;
+   let selectedPath: string;
+
+   if (projectName) {
+      // Called from webview with a specific project name
+      const project = state.stats.projects.find((p) => p.name === projectName);
+      if (!project) {
+         vscode.window.showErrorMessage(`${DISPLAY_NAME}: Project "${projectName}" not found.`);
+         return;
+      }
+      selectedLabel = project.name;
+      selectedPath = project.path;
+   } else {
+      // Show quick pick
+      const items = state.stats.projects.map((p) => ({
+         label: p.name,
+         description: p.path,
+         detail: `${p.nodes.toLocaleString()} nodes · ${p.edges.toLocaleString()} edges`,
+      }));
+      const selected = await vscode.window.showQuickPick(items, {
+         placeHolder: 'Select a project to remove',
+         title: `${DISPLAY_NAME}: Remove Repository`,
+      });
+      if (!selected) {
+         return;
+      }
+      selectedLabel = selected.label;
+      selectedPath = selected.description || '';
+   }
+
+   try {
+      await runCli(state.resolvedBinary, ['cli', 'delete_project', JSON.stringify({ project: selectedLabel })], 10000);
+      vscode.window.showInformationMessage(`${DISPLAY_NAME}: Removed "${selectedLabel}".`);
+      log(`[INFO] Removed project: ${selectedLabel}`);
+
+      // Offer to remove from VS Code workspace if present
+      if (selectedPath && vscode.workspace.workspaceFolders) {
+         const wsIndex = vscode.workspace.workspaceFolders.findIndex(
+            (f) => normalizePath(f.uri.fsPath) === normalizePath(selectedPath),
+         );
+         if (wsIndex >= 0 && vscode.workspace.workspaceFolders.length > 1) {
+            const answer = await vscode.window.showInformationMessage(
+               `Remove "${path.basename(selectedPath)}" from workspace folders too?`,
+               'Yes',
+               'No',
+            );
+            if (answer === 'Yes') {
+               vscode.workspace.updateWorkspaceFolders(wsIndex, 1);
+               log(`[INFO] Removed from workspace: ${selectedPath}`);
+            }
+         }
+      }
+
+      const workspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+      await pollStats(workspace);
+   } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      vscode.window.showErrorMessage(`${DISPLAY_NAME}: Failed to remove project — ${msg}`);
+      log(`[REMOVE ERROR] ${msg}`);
+   }
+}
+
 export async function indexRepository(workspace: string): Promise<void> {
    if (!state.resolvedBinary) {
       vscode.window.showErrorMessage(`${DISPLAY_NAME}: Binary not found.`);

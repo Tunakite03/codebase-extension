@@ -16,7 +16,11 @@ export class CBMWebviewProvider implements vscode.WebviewViewProvider {
          localResourceRoots: [this._extensionUri],
       };
       webviewView.webview.html = this._getHtml();
-      webviewView.webview.onDidReceiveMessage((msg: { command: string }) => {
+      webviewView.webview.onDidReceiveMessage((msg: { command: string; project?: string }) => {
+         if (msg.command === 'removeProject' && msg.project) {
+            vscode.commands.executeCommand('contextEngine.removeRepo', msg.project);
+            return;
+         }
          const cmdMap: Record<string, string> = {
             startServer: 'contextEngine.startServer',
             stopServer: 'contextEngine.stopServer',
@@ -25,6 +29,8 @@ export class CBMWebviewProvider implements vscode.WebviewViewProvider {
             setupAgents: 'contextEngine.setupAgents',
             installBinary: 'contextEngine.installBinary',
             viewLogs: 'contextEngine.viewLogs',
+            addRepo: 'contextEngine.addRepo',
+            removeRepo: 'contextEngine.removeRepo',
          };
          const cmd = cmdMap[msg.command];
          if (cmd) {
@@ -59,6 +65,7 @@ export class CBMWebviewProvider implements vscode.WebviewViewProvider {
       const binaryFound = state.resolvedBinary !== null;
       const running = state.isRunning;
       const indexing = state.stats.isIndexing;
+      const isWorkspace = vscode.workspace.workspaceFile !== undefined;
 
       // --- Status indicator ---
       let statusDot: string;
@@ -120,8 +127,19 @@ export class CBMWebviewProvider implements vscode.WebviewViewProvider {
             </button>`;
       }
 
-      // Always show Setup Agents & View Logs when binary is found
+      // Always show Setup Agents, Add/Remove Repo & View Logs when binary is found
       if (binaryFound) {
+         if (isWorkspace) {
+            actionsHtml += `
+            <button class="btn btn-accent" data-cmd="addRepo">
+               <svg class="btn-icon" viewBox="0 0 16 16"><path d="M8 1.5v13M1.5 8h13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none"/></svg>
+               Add Repository
+            </button>
+            <button class="btn" data-cmd="removeRepo">
+               <svg class="btn-icon" viewBox="0 0 16 16"><path d="M2 4h12M5.3 4V2.7a.7.7 0 01.7-.7h4a.7.7 0 01.7.7V4m1.3 0v9.3a1 1 0 01-1 1H5a1 1 0 01-1-1V4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+               Remove Repository
+            </button>`;
+         }
          actionsHtml += `
             <button class="btn" data-cmd="setupAgents">
                <svg class="btn-icon" viewBox="0 0 16 16"><circle cx="8" cy="8" r="3" stroke="currentColor" stroke-width="1.3" fill="none"/><path d="M8 1v2m0 10v2M1 8h2m10 0h2M2.9 2.9l1.4 1.4m7.4 7.4l1.4 1.4M13.1 2.9l-1.4 1.4M4.3 11.7l-1.4 1.4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" fill="none"/></svg>
@@ -146,6 +164,9 @@ export class CBMWebviewProvider implements vscode.WebviewViewProvider {
                   <div class="project-name">${escHtml(p.name)}</div>
                   <div class="project-path">${escHtml(p.path)}</div>
                </div>
+               <button class="btn-remove" data-remove-project="${escHtml(p.name)}" title="Remove project">
+                  <svg viewBox="0 0 16 16" width="14" height="14"><path d="M2 4h12M5.3 4V2.7a.7.7 0 01.7-.7h4a.7.7 0 01.7.7V4m1.3 0v9.3a1 1 0 01-1 1H5a1 1 0 01-1-1V4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+               </button>
             </div>
             <div class="project-metrics">
                <span class="pm">${fmt(p.nodes)} <em>nodes</em></span>
@@ -234,6 +255,12 @@ ${metricsHtml}
          btn.classList.add('btn-click');
          setTimeout(() => btn.classList.remove('btn-click'), 150);
          vscode.postMessage({ command: btn.dataset.cmd });
+      });
+   });
+   document.querySelectorAll('[data-remove-project]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+         e.stopPropagation();
+         vscode.postMessage({ command: 'removeProject', project: btn.dataset.removeProject });
       });
    });
 </script>
@@ -558,6 +585,19 @@ body {
 .dot.green { background: #3fb950; box-shadow: 0 0 5px rgba(63,185,80,0.4); }
 .dot.gray  { background: #484f58; }
 .project-info { flex: 1; min-width: 0; }
+.btn-remove {
+   background: none;
+   border: 1px solid transparent;
+   border-radius: 4px;
+   color: var(--text-secondary);
+   cursor: pointer;
+   padding: 3px;
+   opacity: 0;
+   transition: all 0.15s ease;
+   flex-shrink: 0;
+}
+.project-card:hover .btn-remove { opacity: 0.6; }
+.btn-remove:hover { opacity: 1 !important; color: var(--accent-red); border-color: rgba(248,81,73,0.3); background: rgba(248,81,73,0.08); }
 .project-name {
    font-weight: 700;
    font-size: 12px;
