@@ -47,9 +47,13 @@ export function startServer(context: vscode.ExtensionContext): void {
 }
 
 export function stopServer(): void {
+   const wasRunning = state.isRunning;
    if (state.mcpProcess) {
       state.mcpProcess.kill();
       state.mcpProcess = null;
+   }
+   if (!wasRunning && !state.mcpProcess) {
+      return;
    }
    state.stats.startedAt = null;
    state.isRunning = false;
@@ -135,9 +139,12 @@ export async function indexRepository(workspace: string): Promise<void> {
       log(`[INDEX ERROR] ${msg}`);
    } finally {
       state.stats.isIndexing = false;
-      state.statusBarItem.text = state.isRunning
-         ? `$(circuit-board) ${DISPLAY_NAME}: running`
-         : `$(circuit-board) ${state.stats.nodes.toLocaleString()} nodes`;
+      state.statusBarItem.text =
+         state.stats.nodes > 0
+            ? `$(circuit-board) ${state.stats.nodes.toLocaleString()} nodes`
+            : state.isRunning
+              ? `$(circuit-board) ${DISPLAY_NAME}: running`
+              : `$(circle-outline) ${DISPLAY_NAME}: stopped`;
       state.webviewProvider.update();
    }
 }

@@ -5,6 +5,16 @@ import { DISPLAY_NAME, GITHUB_REPO } from './types';
 import { state } from './state';
 import { normalizePath } from './binary';
 
+function getExtensionVersion(): string {
+   try {
+      const pkgPath = path.join(__dirname, '..', 'package.json');
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+      return pkg.version || '0.0.0';
+   } catch {
+      return '0.0.0';
+   }
+}
+
 /** Returns the local cache directory for DB storage: <workspace>/.codebase/data */
 export function getLocalCacheDir(workspace: string): string {
    return path.join(workspace, '.codebase', 'data').replace(/\\/g, '/');
@@ -29,7 +39,7 @@ export function writeCodebaseDir(workspace: string): void {
 
    const status = {
       binary: state.resolvedBinary,
-      binary_version: '0.5.7',
+      binary_version: getExtensionVersion(),
       project_name: project?.name || path.basename(workspace),
       root_path: normalizedWs,
       nodes: project?.nodes || state.stats.nodes,
@@ -74,10 +84,30 @@ export function writeCodebaseDir(workspace: string): void {
    }
 }
 
-export function setupAgentConfigs(workspace: string): void {
+export async function setupAgentConfigs(workspace: string): Promise<void> {
    if (!state.resolvedBinary) {
       vscode.window.showErrorMessage(`${DISPLAY_NAME}: Binary not found.`);
       return;
+   }
+
+   const targets = [
+      '.vscode/mcp.json',
+      '.github/copilot-instructions.md',
+      'AGENTS.md',
+      '.claude/CLAUDE.md',
+      '.cursor/mcp.json',
+      '.zed/settings.json',
+   ];
+   const existing = targets.filter((t) => fs.existsSync(path.join(workspace, t)));
+   if (existing.length > 0) {
+      const choice = await vscode.window.showWarningMessage(
+         `${DISPLAY_NAME}: This will overwrite: ${existing.join(', ')}`,
+         { modal: true },
+         'Overwrite',
+      );
+      if (choice !== 'Overwrite') {
+         return;
+      }
    }
 
    const binaryCmd = state.resolvedBinary;
@@ -165,34 +195,48 @@ mcp_codebase-memo_get_code_snippet({ "qualified_name": "<fn>" }) // read code
 - Prevents reading stale files or following ghost references.
 `;
 
-   const toolsInstruction = `---
-applyTo: '**'
----
+   const agentsContent = `## Codebase Memory MCP
 
-## Codebase Memory MCP — Available Tools
+**MANDATORY: use Codebase Memory MCP graph tools FIRST — before reading files or making code changes.**
 
-**MANDATORY: Use these tools instead of grep, file search, or reading files directly.**
+This rule applies to every request involving this codebase.
 
-### Indexing Tools
+### Workflow
 
+1. Call \`get_architecture(project)\` FIRST to understand the codebase structure.
+2. Use \`search_graph\` to find relevant symbols, \`trace_call_path\` for call chains.
+3. Use \`get_code_snippet\` to read specific function implementations.
+4. Only use \`read_file\` when you need exact raw content to edit a specific line.
+
+### Available Tools (14 MCP tools)
+
+**Indexing:**
 - \`index_repository(repo_path)\` — Index a repository into the knowledge graph
 - \`list_projects\` — List all indexed projects with node/edge counts
 - \`delete_project(project)\` — Remove a project and all its graph data
-- \`index_status(project)\` — Check indexing status and health
+- \`index_status(project)\` — Check indexing status
 
-### Querying Tools
-
-- \`get_architecture(project)\` — **START HERE**: codebase overview, languages, packages, routes, hotspots
-- \`search_graph(name_pattern, label, file_pattern)\` — Structured search by label, name, or file
-- \`get_code_snippet(qualified_name)\` — Read source code for a specific function
+**Querying:**
+- \`search_graph(name_pattern, label, file_pattern)\` — Structured search by label, name, file
 - \`trace_call_path(function_name, direction, depth)\` — BFS call chain traversal
-- \`detect_changes(project)\` — Map git diff to affected symbols + risk assessment
+- \`detect_changes(project)\` — Map git diff to affected symbols + risk
 - \`query_graph(query)\` — Execute Cypher-like graph queries (read-only)
-- \`get_graph_schema(project)\` — Node/edge counts and relationship patterns
+- \`get_graph_schema(project)\` — Node/edge counts, relationship patterns
+- \`get_code_snippet(qualified_name)\` — Read source code for a function
+- \`get_architecture(project)\` — Codebase overview: languages, packages, routes, hotspots
 - \`search_code(pattern, project)\` — Grep-like text search within indexed files
 - \`manage_adr(action)\` — CRUD for Architecture Decision Records
 - \`ingest_traces(traces)\` — Ingest runtime traces to validate HTTP edges
 `;
+
+   const zedSettings = {
+      context_servers: {
+         'codebase-memory': {
+            command: binaryCmd,
+            args: [] as string[],
+         },
+      },
+   };
 
    const write = (dir: string, file: string, content: string) => {
       fs.mkdirSync(dir, { recursive: true });
@@ -202,12 +246,13 @@ applyTo: '**'
    write(path.join(workspace, '.vscode'), 'mcp.json', JSON.stringify(vscodeMcp, null, 2));
    write(path.join(workspace, '.github'), 'copilot-instructions.md', instructions);
    write(path.join(workspace, '.github', 'instructions'), 'codebase-workflow.instructions.md', workflowInstruction);
-   write(path.join(workspace, '.github', 'instructions'), 'codebase-tools.instructions.md', toolsInstruction);
+   write(workspace, 'AGENTS.md', agentsContent);
    write(path.join(workspace, '.claude'), 'CLAUDE.md', instructions);
    write(path.join(workspace, '.cursor'), 'mcp.json', JSON.stringify(cursorMcp, null, 2));
+   write(path.join(workspace, '.zed'), 'settings.json', JSON.stringify(zedSettings, null, 2));
 
    vscode.window.showInformationMessage(
-      `${DISPLAY_NAME}: Agent configs written to .vscode/, .github/, .github/instructions/, .claude/, .cursor/`,
+      `${DISPLAY_NAME}: Agent configs written to .vscode/, .github/, .github/instructions/, .claude/, .cursor/, .zed/`,
    );
 }
 

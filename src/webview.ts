@@ -36,7 +36,17 @@ export class CBMWebviewProvider implements vscode.WebviewViewProvider {
       }
    }
 
+   private _getNonce(): string {
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+      let nonce = '';
+      for (let i = 0; i < 32; i++) {
+         nonce += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      return nonce;
+   }
+
    private _getHtml(): string {
+      const nonce = this._getNonce();
       const workspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
       const repoName = workspace ? path.basename(workspace) : 'No workspace';
       const uptime = state.stats.startedAt ? formatUptime(Date.now() - state.stats.startedAt.getTime()) : '\u2014';
@@ -163,7 +173,7 @@ export class CBMWebviewProvider implements vscode.WebviewViewProvider {
 
       // --- Binary info bar ---
       const binaryInfo = binaryFound
-         ? `<div class="info-bar"><span class="info-tag ok">v0.5.7</span> Binary ready</div>`
+         ? `<div class="info-bar"><span class="info-tag ok">v0.1.0</span> Binary ready</div>`
          : `<div class="info-bar"><span class="info-tag err">!</span> Binary not found &mdash; install to get started</div>`;
 
       return `<!DOCTYPE html>
@@ -171,7 +181,8 @@ export class CBMWebviewProvider implements vscode.WebviewViewProvider {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<style>
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
+<style nonce="${nonce}">
 ${CSS}
 </style>
 </head>
@@ -213,7 +224,7 @@ ${metricsHtml}
    ${projectsHtml}
 </div>
 
-<script>
+<script nonce="${nonce}">
    const vscode = acquireVsCodeApi();
    document.querySelectorAll('[data-cmd]').forEach(btn => {
       btn.addEventListener('click', () => {

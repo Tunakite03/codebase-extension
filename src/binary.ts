@@ -1,4 +1,4 @@
-import * as vscode from 'vscode';
+import type * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -18,6 +18,8 @@ export function findBinary(context: vscode.ExtensionContext): string | null {
          path.join(home, '.local', 'bin', BINARY_NAME),
          path.join(home, 'AppData', 'Local', 'codebase-memory-mcp', BINARY_NAME),
          path.join(home, 'bin', BINARY_NAME),
+         // Rust binary build paths (development)
+         path.join(home, '.cargo', 'bin', BINARY_NAME),
       );
    } else if (process.platform === 'darwin') {
       candidates.push(
@@ -25,12 +27,14 @@ export function findBinary(context: vscode.ExtensionContext): string | null {
          '/usr/local/bin/' + BINARY_NAME,
          '/opt/homebrew/bin/' + BINARY_NAME,
          path.join(home, 'bin', BINARY_NAME),
+         path.join(home, '.cargo', 'bin', BINARY_NAME),
       );
    } else {
       candidates.push(
          path.join(home, '.local', 'bin', BINARY_NAME),
          '/usr/local/bin/' + BINARY_NAME,
          path.join(home, 'bin', BINARY_NAME),
+         path.join(home, '.cargo', 'bin', BINARY_NAME),
       );
    }
 
