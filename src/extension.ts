@@ -83,10 +83,41 @@ export function activate(context: vscode.ExtensionContext): void {
       if (!state.pollTimer) {
          state.pollTimer = setInterval(() => pollStats(workspace), 8000);
       }
+
+      // Auto re-index on file changes (debounced 5s)
+      state.fileWatcher = vscode.workspace.createFileSystemWatcher('**/*', false, false, false);
+      const DEBOUNCE_MS = 5000;
+      const scheduleReindex = () => {
+         if (!state.isRunning || state.stats.isIndexing) {
+            return;
+         }
+         if (state.watchDebounce) {
+            clearTimeout(state.watchDebounce);
+         }
+         state.watchDebounce = setTimeout(() => {
+            state.watchDebounce = null;
+            if (state.isRunning && !state.stats.isIndexing) {
+               log('[INFO] File change detected — triggering incremental index');
+               indexRepository(workspace);
+            }
+         }, DEBOUNCE_MS);
+      };
+      state.fileWatcher.onDidChange(scheduleReindex);
+      state.fileWatcher.onDidCreate(scheduleReindex);
+      state.fileWatcher.onDidDelete(scheduleReindex);
+      context.subscriptions.push(state.fileWatcher);
    }
 }
 
 export function deactivate(): void {
+   if (state.watchDebounce) {
+      clearTimeout(state.watchDebounce);
+      state.watchDebounce = null;
+   }
+   if (state.fileWatcher) {
+      state.fileWatcher.dispose();
+      state.fileWatcher = null;
+   }
    if (state.pollTimer) {
       clearInterval(state.pollTimer);
       state.pollTimer = null;

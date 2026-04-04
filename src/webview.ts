@@ -11,7 +11,10 @@ export class CBMWebviewProvider implements vscode.WebviewViewProvider {
 
    resolveWebviewView(webviewView: vscode.WebviewView): void {
       this._view = webviewView;
-      webviewView.webview.options = { enableScripts: true };
+      webviewView.webview.options = {
+         enableScripts: true,
+         localResourceRoots: [this._extensionUri],
+      };
       webviewView.webview.html = this._getHtml();
       webviewView.webview.onDidReceiveMessage((msg: { command: string }) => {
          const cmdMap: Record<string, string> = {

@@ -13,6 +13,8 @@ export interface ExtensionState {
    resolvedBinary: string | null;
    logFilePath: string | null;
    cacheDir: string | null;
+   fileWatcher: vscode.FileSystemWatcher | null;
+   watchDebounce: ReturnType<typeof setTimeout> | null;
 }
 
 export const state: ExtensionState = {
@@ -34,4 +36,6 @@ export const state: ExtensionState = {
    resolvedBinary: null,
    logFilePath: null,
    cacheDir: null,
+   fileWatcher: null,
+   watchDebounce: null,
 };
