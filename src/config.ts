@@ -41,6 +41,8 @@ export function writeCodebaseDir(workspace: string): void {
       binary: state.resolvedBinary,
       binary_version: getExtensionVersion(),
       project_name: project?.name || path.basename(workspace),
+      project_display_name: project?.displayName || path.basename(workspace),
+      project_aliases: project?.aliases || [],
       root_path: normalizedWs,
       nodes: project?.nodes || state.stats.nodes,
       edges: project?.edges || state.stats.edges,

@@ -8,6 +8,8 @@ export interface ProjectInfo {
    nodes: number;
    edges: number;
    files: number;
+   displayName?: string;
+   aliases?: string[];
 }
 
 export interface IndexStats {

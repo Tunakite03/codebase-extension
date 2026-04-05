@@ -3,9 +3,16 @@ import * as path from 'path';
 import { DISPLAY_NAME } from './types';
 import { state } from './state';
 import { log, initLogFile } from './logger';
-import { findBinary, normalizePath } from './binary';
-import { runCli } from './cli';
-import { startServer, stopServer, pollStats, indexRepository, addRepository, removeRepository } from './server';
+import { findBinary } from './binary';
+import {
+   startServer,
+   stopServer,
+   pollStats,
+   indexRepository,
+   addRepository,
+   removeRepository,
+   forceReindexRepository,
+} from './server';
 import { CBMWebviewProvider } from './webview';
 import { setupAgentConfigs, installBinary, initCacheDir } from './config';
 
@@ -41,18 +48,7 @@ export function activate(context: vscode.ExtensionContext): void {
       vscode.commands.registerCommand('contextEngine.startServer', () => startServer(context)),
       vscode.commands.registerCommand('contextEngine.stopServer', () => stopServer()),
       vscode.commands.registerCommand('contextEngine.indexRepo', () => indexRepository(workspace)),
-      vscode.commands.registerCommand('contextEngine.forceReindex', () => {
-         if (!workspace || !state.resolvedBinary) {
-            return;
-         }
-         // Build the same slug the binary uses: replace each ':', '/', '\' with '-'
-         const projectName = normalizePath(workspace).replace(/[:/\\]/g, '-');
-         runCli(state.resolvedBinary, ['cli', 'delete_project', JSON.stringify({ project: projectName })], 10000)
-            .catch(() => {
-               /* may not exist */
-            })
-            .then(() => indexRepository(workspace));
-      }),
+      vscode.commands.registerCommand('contextEngine.forceReindex', () => forceReindexRepository(workspace)),
       vscode.commands.registerCommand('contextEngine.setupAgents', () => {
          if (!workspace) {
             vscode.window.showWarningMessage(`${DISPLAY_NAME}: No workspace folder open.`);

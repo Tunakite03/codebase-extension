@@ -8,6 +8,111 @@ import { runCli, parseMcpEnvelope, getCacheEnv } from './cli';
 import { normalizePath } from './binary';
 import { writeCodebaseDir } from './config';
 
+interface ListProjectsItem {
+   name: string;
+   root_path: string;
+   nodes: number;
+   edges: number;
+   size_bytes: number;
+   display_name?: string;
+   aliases?: string[];
+}
+
+function isPathLike(value: string): boolean {
+   return value.includes('/') || value.includes('\\') || value.includes(':');
+}
+
+function normalizeProjectKey(value: string): string {
+   return normalizePath(value).replace(/\/+$/, '').toLowerCase();
+}
+
+function deriveLegacyProjectName(pathLike: string): string {
+   return normalizePath(pathLike)
+      .replace(/[:/\\]/g, '-')
+      .replace(/^-+/, '');
+}
+
+function getProjectDisplayName(project: ProjectInfo): string {
+   if (project.displayName && project.displayName.trim().length > 0) {
+      return project.displayName;
+   }
+   const base = path.basename(project.path);
+   return base || project.name;
+}
+
+function resolveProjectReference(projectRef: string): ProjectInfo | undefined {
+   const ref = projectRef.trim();
+   if (!ref) {
+      return undefined;
+   }
+
+   const lowerRef = ref.toLowerCase();
+   const normalizedRef = normalizeProjectKey(ref);
+
+   const byExactName = state.stats.projects.find((p) => p.name === ref);
+   if (byExactName) {
+      return byExactName;
+   }
+
+   const byNameIgnoreCase = state.stats.projects.find((p) => p.name.toLowerCase() === lowerRef);
+   if (byNameIgnoreCase) {
+      return byNameIgnoreCase;
+   }
+
+   const byPath = state.stats.projects.find((p) => normalizeProjectKey(p.path) === normalizedRef);
+   if (byPath) {
+      return byPath;
+   }
+
+   const byDisplay = state.stats.projects.find((p) => getProjectDisplayName(p).toLowerCase() === lowerRef);
+   if (byDisplay) {
+      return byDisplay;
+   }
+
+   const byAlias = state.stats.projects.find((p) =>
+      (p.aliases || []).some((alias) => {
+         if (alias.toLowerCase() === lowerRef) {
+            return true;
+         }
+         if (isPathLike(alias)) {
+            return normalizeProjectKey(alias) === normalizedRef;
+         }
+         return false;
+      }),
+   );
+   if (byAlias) {
+      return byAlias;
+   }
+
+   if (isPathLike(ref)) {
+      const legacyName = deriveLegacyProjectName(ref).toLowerCase();
+      return state.stats.projects.find((p) => p.name.toLowerCase() === legacyName);
+   }
+
+   return undefined;
+}
+
+function resolveWorkspaceProject(workspace: string): ProjectInfo | undefined {
+   const workspaceMatch = resolveProjectReference(workspace);
+   if (workspaceMatch) {
+      return workspaceMatch;
+   }
+
+   const workspaceBase = path.basename(normalizePath(workspace)).toLowerCase();
+   const displayMatches = state.stats.projects.filter((p) => getProjectDisplayName(p).toLowerCase() === workspaceBase);
+   if (displayMatches.length === 1) {
+      return displayMatches[0];
+   }
+   if (displayMatches.length > 1) {
+      log(
+         `[WARN] Multiple projects match workspace basename "${workspaceBase}"; using legacy delete fallback for force reindex`,
+      );
+   }
+
+   const legacyName = deriveLegacyProjectName(workspace).toLowerCase();
+   return state.stats.projects.find((p) => p.name.toLowerCase() === legacyName);
+}
+
 export function startServer(context: vscode.ExtensionContext): void {
    if (state.mcpProcess) {
       vscode.window.showWarningMessage(`${DISPLAY_NAME}: Server already running.`);
@@ -69,7 +174,7 @@ export async function pollStats(workspace: string): Promise<void> {
    try {
       const raw = await runCli(state.resolvedBinary, ['cli', 'list_projects', '{}']);
       const result = parseMcpEnvelope(raw) as {
-         projects?: Array<{ name: string; root_path: string; nodes: number; edges: number; size_bytes: number }>;
+         projects?: ListProjectsItem[];
       };
       const projects = (result.projects || []).map(
          (p): ProjectInfo => ({
@@ -78,6 +183,10 @@ export async function pollStats(workspace: string): Promise<void> {
             nodes: p.nodes,
             edges: p.edges,
             files: p.size_bytes,
+            displayName: typeof p.display_name === 'string' ? p.display_name : path.basename(p.root_path) || p.name,
+            aliases: Array.isArray(p.aliases)
+               ? p.aliases.filter((alias): alias is string => typeof alias === 'string' && alias.trim().length > 0)
+               : undefined,
          }),
       );
       let totalNodes = 0;
@@ -157,23 +266,26 @@ export async function removeRepository(projectName?: string): Promise<void> {
    }
 
    let selectedLabel: string;
+   let selectedDisplay: string;
    let selectedPath: string;
 
    if (projectName) {
-      // Called from webview with a specific project name
-      const project = state.stats.projects.find((p) => p.name === projectName);
+      // Called from webview/command with project name, display name, or root path.
+      const project = resolveProjectReference(projectName);
       if (!project) {
          vscode.window.showErrorMessage(`${DISPLAY_NAME}: Project "${projectName}" not found.`);
          return;
       }
       selectedLabel = project.name;
+      selectedDisplay = getProjectDisplayName(project);
       selectedPath = project.path;
    } else {
       // Show quick pick
       const items = state.stats.projects.map((p) => ({
-         label: p.name,
-         description: p.path,
-         detail: `${p.nodes.toLocaleString()} nodes · ${p.edges.toLocaleString()} edges`,
+         label: getProjectDisplayName(p),
+         description: p.name,
+         detail: `${p.path} · ${p.nodes.toLocaleString()} nodes · ${p.edges.toLocaleString()} edges`,
+         project: p,
       }));
       const selected = await vscode.window.showQuickPick(items, {
          placeHolder: 'Select a project to remove',
@@ -182,13 +294,15 @@ export async function removeRepository(projectName?: string): Promise<void> {
       if (!selected) {
          return;
       }
-      selectedLabel = selected.label;
-      selectedPath = selected.description || '';
+      selectedLabel = selected.project.name;
+      selectedDisplay = selected.label;
+      selectedPath = selected.project.path;
    }
 
    try {
       await runCli(state.resolvedBinary, ['cli', 'delete_project', JSON.stringify({ project: selectedLabel })], 10000);
-      vscode.window.showInformationMessage(`${DISPLAY_NAME}: Removed "${selectedLabel}".`);
+      const shownName = selectedDisplay === selectedLabel ? selectedLabel : `${selectedDisplay} (${selectedLabel})`;
+      vscode.window.showInformationMessage(`${DISPLAY_NAME}: Removed "${shownName}".`);
       log(`[INFO] Removed project: ${selectedLabel}`);
 
       // Offer to remove from VS Code workspace if present
@@ -216,6 +330,49 @@ export async function removeRepository(projectName?: string): Promise<void> {
       vscode.window.showErrorMessage(`${DISPLAY_NAME}: Failed to remove project — ${msg}`);
       log(`[REMOVE ERROR] ${msg}`);
    }
+}
+
+export async function forceReindexRepository(workspace: string): Promise<void> {
+   if (!workspace) {
+      vscode.window.showErrorMessage(`${DISPLAY_NAME}: No workspace folder open.`);
+      return;
+   }
+   if (!state.resolvedBinary) {
+      vscode.window.showErrorMessage(`${DISPLAY_NAME}: Binary not found.`);
+      return;
+   }
+
+   await pollStats(workspace);
+
+   const targetProject = resolveWorkspaceProject(workspace);
+   if (targetProject) {
+      try {
+         await runCli(
+            state.resolvedBinary,
+            ['cli', 'delete_project', JSON.stringify({ project: targetProject.name })],
+            10000,
+         );
+         log(`[INFO] Force re-index: removed project "${targetProject.name}"`);
+      } catch (err: unknown) {
+         log(
+            `[WARN] Force re-index: failed to remove "${targetProject.name}" — ${
+               err instanceof Error ? err.message : String(err)
+            }`,
+         );
+      }
+   } else {
+      const legacyName = deriveLegacyProjectName(workspace);
+      try {
+         await runCli(state.resolvedBinary, ['cli', 'delete_project', JSON.stringify({ project: legacyName })], 10000);
+         log(`[INFO] Force re-index: removed legacy project key "${legacyName}"`);
+      } catch {
+         log(
+            `[INFO] Force re-index: no existing project matched workspace "${workspace}"; continuing with fresh index`,
+         );
+      }
+   }
+
+   await indexRepository(workspace);
 }
 
 export async function indexRepository(workspace: string, silent: boolean = false): Promise<void> {

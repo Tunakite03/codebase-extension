@@ -155,13 +155,19 @@ export class CBMWebviewProvider implements vscode.WebviewViewProvider {
       const projectsHtml =
          state.stats.projects.length > 0
             ? state.stats.projects
-                 .map(
-                    (p) => `
+                 .map((p) => {
+                    const displayName = p.displayName || p.name;
+                    const canonicalHint =
+                       p.displayName && p.displayName !== p.name
+                          ? `<div class="project-canonical">${escHtml(p.name)}</div>`
+                          : '';
+                    return `
          <div class="project-card">
             <div class="project-header">
                <div class="project-dot-wrap"><span class="dot green"></span></div>
                <div class="project-info">
-                  <div class="project-name">${escHtml(p.name)}</div>
+                  <div class="project-name">${escHtml(displayName)}</div>
+                  ${canonicalHint}
                   <div class="project-path">${escHtml(p.path)}</div>
                </div>
                <button class="btn-remove" data-remove-project="${escHtml(p.name)}" title="Remove project">
@@ -173,8 +179,8 @@ export class CBMWebviewProvider implements vscode.WebviewViewProvider {
                <span class="pm-sep">&middot;</span>
                <span class="pm">${fmt(p.edges)} <em>edges</em></span>
             </div>
-         </div>`,
-                 )
+         </div>`;
+                 })
                  .join('')
             : workspace
               ? `
@@ -602,6 +608,12 @@ body {
    font-weight: 700;
    font-size: 12px;
    line-height: 1.3;
+   word-break: break-word;
+}
+.project-canonical {
+   font-size: 10px;
+   color: var(--text-secondary);
+   margin-top: 1px;
    word-break: break-word;
 }
 .project-path {
