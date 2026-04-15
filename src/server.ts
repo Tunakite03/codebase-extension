@@ -7,6 +7,7 @@ import { log } from './logger';
 import { runCli, parseMcpEnvelope, getCacheEnv } from './cli';
 import { normalizePath } from './binary';
 import { writeCodebaseDir } from './config';
+import { getPrimaryWorkspacePath } from './workspace';
 
 interface ListProjectsItem {
    name: string;
@@ -113,6 +114,21 @@ function resolveWorkspaceProject(workspace: string): ProjectInfo | undefined {
    return state.stats.projects.find((p) => p.name.toLowerCase() === legacyName);
 }
 
+function maybeAutoIndexWorkspace(workspace: string): void {
+   if (!workspace || !state.isRunning || state.stats.isIndexing) {
+      return;
+   }
+
+   const indexedWorkspace = resolveWorkspaceProject(workspace);
+   if (indexedWorkspace) {
+      log(`[INFO] Workspace already indexed as "${indexedWorkspace.name}"`);
+      return;
+   }
+
+   log('[INFO] Workspace is not indexed yet — starting auto-index');
+   void indexRepository(workspace);
+}
+
 export function startServer(context: vscode.ExtensionContext): void {
    if (state.mcpProcess) {
       vscode.window.showWarningMessage(`${DISPLAY_NAME}: Server already running.`);
@@ -139,15 +155,22 @@ export function startServer(context: vscode.ExtensionContext): void {
    state.statusBarItem.text = `$(circuit-board) ${DISPLAY_NAME}: running`;
    state.webviewProvider.update();
 
-   const workspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
    if (!state.pollTimer) {
-      state.pollTimer = setInterval(() => pollStats(workspace), 8000);
+      state.pollTimer = setInterval(() => {
+         const workspace = getPrimaryWorkspacePath();
+         if (workspace) {
+            void pollStats(workspace);
+         } else {
+            state.webviewProvider.update();
+         }
+      }, 8000);
+   }
+   const workspace = getPrimaryWorkspacePath();
+   if (!workspace) {
+      return;
    }
    pollStats(workspace).then(() => {
-      if (state.stats.nodes === 0 && workspace && state.isRunning) {
-         log('[INFO] No indexed data found — starting auto-index');
-         indexRepository(workspace);
-      }
+      maybeAutoIndexWorkspace(workspace);
    });
 }
 

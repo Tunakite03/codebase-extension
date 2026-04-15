@@ -155,7 +155,7 @@ This rule applies to every request involving this codebase.
 - \`index_status(project)\` — Check indexing status
 
 **Querying:**
-- \`search_graph(name_pattern, label, file_pattern)\` — Structured search by label, name, file
+- \`search_graph(name_pattern, name_scope, label, file_pattern, exclude_file_pattern)\` — Structured search by label, name/qualified_name, include/exclude file globs
 - \`trace_call_path(function_name, direction, depth)\` — BFS call chain traversal
 - \`detect_changes(project)\` — Map git diff to affected symbols + risk
 - \`query_graph(query)\` — Execute Cypher-like graph queries (read-only)
@@ -219,7 +219,7 @@ This rule applies to every request involving this codebase.
 - \`index_status(project)\` — Check indexing status
 
 **Querying:**
-- \`search_graph(name_pattern, label, file_pattern)\` — Structured search by label, name, file
+- \`search_graph(name_pattern, name_scope, label, file_pattern, exclude_file_pattern)\` — Structured search by label, name/qualified_name, include/exclude file globs
 - \`trace_call_path(function_name, direction, depth)\` — BFS call chain traversal
 - \`detect_changes(project)\` — Map git diff to affected symbols + risk
 - \`query_graph(query)\` — Execute Cypher-like graph queries (read-only)

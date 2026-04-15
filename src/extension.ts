@@ -15,6 +15,16 @@ import {
 } from './server';
 import { CBMWebviewProvider } from './webview';
 import { setupAgentConfigs, installBinary, initCacheDir } from './config';
+import { getPrimaryWorkspacePath } from './workspace';
+
+function syncWorkspaceContext(): string {
+   const workspace = getPrimaryWorkspacePath();
+   if (workspace) {
+      initLogFile(workspace);
+      initCacheDir(workspace);
+   }
+   return workspace;
+}
 
 export function activate(context: vscode.ExtensionContext): void {
    state.logChannel = vscode.window.createOutputChannel(DISPLAY_NAME);
@@ -22,11 +32,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
    state.resolvedBinary = findBinary(context);
 
-   const workspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
-   if (workspace) {
-      initLogFile(workspace);
-      initCacheDir(workspace);
-   }
+   const workspace = syncWorkspaceContext();
 
    if (state.resolvedBinary) {
       log(`[INFO] Binary found: ${state.resolvedBinary}`);
@@ -47,9 +53,12 @@ export function activate(context: vscode.ExtensionContext): void {
    context.subscriptions.push(
       vscode.commands.registerCommand('contextEngine.startServer', () => startServer(context)),
       vscode.commands.registerCommand('contextEngine.stopServer', () => stopServer()),
-      vscode.commands.registerCommand('contextEngine.indexRepo', () => indexRepository(workspace)),
-      vscode.commands.registerCommand('contextEngine.forceReindex', () => forceReindexRepository(workspace)),
+      vscode.commands.registerCommand('contextEngine.indexRepo', () => indexRepository(getPrimaryWorkspacePath())),
+      vscode.commands.registerCommand('contextEngine.forceReindex', () =>
+         forceReindexRepository(getPrimaryWorkspacePath()),
+      ),
       vscode.commands.registerCommand('contextEngine.setupAgents', () => {
+         const workspace = syncWorkspaceContext();
          if (!workspace) {
             vscode.window.showWarningMessage(`${DISPLAY_NAME}: No workspace folder open.`);
             return;
@@ -71,8 +80,17 @@ export function activate(context: vscode.ExtensionContext): void {
       }),
       vscode.commands.registerCommand('contextEngine.refresh', () => {
          state.resolvedBinary = findBinary(context);
+         const workspace = syncWorkspaceContext();
          if (workspace) {
-            pollStats(workspace);
+            void pollStats(workspace);
+         } else {
+            state.webviewProvider.update();
+         }
+      }),
+      vscode.workspace.onDidChangeWorkspaceFolders(() => {
+         const workspace = syncWorkspaceContext();
+         if (workspace && state.isRunning) {
+            void pollStats(workspace);
          } else {
             state.webviewProvider.update();
          }
@@ -80,9 +98,16 @@ export function activate(context: vscode.ExtensionContext): void {
    );
 
    if (state.resolvedBinary && workspace) {
-      pollStats(workspace);
+      void pollStats(workspace);
       if (!state.pollTimer) {
-         state.pollTimer = setInterval(() => pollStats(workspace), 8000);
+         state.pollTimer = setInterval(() => {
+            const workspace = getPrimaryWorkspacePath();
+            if (workspace) {
+               void pollStats(workspace);
+            } else {
+               state.webviewProvider.update();
+            }
+         }, 8000);
       }
 
       // Auto re-index on file changes (debounced 5s)
@@ -102,9 +127,10 @@ export function activate(context: vscode.ExtensionContext): void {
          }
          state.watchDebounce = setTimeout(() => {
             state.watchDebounce = null;
-            if (state.isRunning && !state.stats.isIndexing) {
+            const workspace = getPrimaryWorkspacePath();
+            if (state.isRunning && !state.stats.isIndexing && workspace) {
                log('[INFO] File change detected — triggering incremental index');
-               indexRepository(workspace, true);
+               void indexRepository(workspace, true);
             }
          }, DEBOUNCE_MS);
       };
