@@ -66,3 +66,10 @@ export function normalizePath(p: string): string {
    }
    return normalized;
 }
+
+export function deriveProjectNameFromPath(pathLike: string): string {
+   return normalizePath(pathLike)
+      .split(/[/:\\]+/)
+      .filter((part) => part.length > 0)
+      .join('-');
+}

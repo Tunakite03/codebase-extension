@@ -5,7 +5,7 @@ import { DISPLAY_NAME, ProjectInfo } from './types';
 import { state } from './state';
 import { log } from './logger';
 import { runCli, parseMcpEnvelope, getCacheEnv } from './cli';
-import { normalizePath } from './binary';
+import { deriveProjectNameFromPath, normalizePath } from './binary';
 import { writeCodebaseDir } from './config';
 import { getPrimaryWorkspacePath } from './workspace';
 
@@ -28,9 +28,7 @@ function normalizeProjectKey(value: string): string {
 }
 
 function deriveLegacyProjectName(pathLike: string): string {
-   return normalizePath(pathLike)
-      .replace(/[:/\\]/g, '-')
-      .replace(/^-+/, '');
+   return deriveProjectNameFromPath(pathLike);
 }
 
 function getProjectDisplayName(project: ProjectInfo): string {
