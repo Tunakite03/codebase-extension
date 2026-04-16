@@ -2,7 +2,7 @@
    "name": "codebase-memory-mcp",
    "displayName": "Codebase Memory MCP",
    "description": "VS Code extension for codebase-memory-mcp — high-performance code intelligence MCP server with knowledge graph, 66 languages, sub-ms queries",
-   "version": "0.5.12",
+   "version": "0.5.13",
    "publisher": "tunakite03",
    "license": "MIT",
    "icon": "icon.png",
