@@ -14,14 +14,13 @@ import {
    forceReindexRepository,
 } from './server';
 import { CBMWebviewProvider } from './webview';
-import { setupAgentConfigs, installBinary, initCacheDir } from './config';
+import { setupAgentConfigs, installBinary } from './config';
 import { getPrimaryWorkspacePath } from './workspace';
 
 function syncWorkspaceContext(): string {
    const workspace = getPrimaryWorkspacePath();
    if (workspace) {
       initLogFile(workspace);
-      initCacheDir(workspace);
    }
    return workspace;
 }
@@ -114,9 +113,9 @@ export function activate(context: vscode.ExtensionContext): void {
       state.fileWatcher = vscode.workspace.createFileSystemWatcher('**/*', false, false, false);
       const DEBOUNCE_MS = 5000;
       const scheduleReindex = (uri?: vscode.Uri) => {
-         // Ignore changes inside .codebase/ — those are DB files written during indexing
+         // Ignore changes inside extension metadata dirs — those are files written during indexing
          // and would otherwise cause an infinite reindex loop.
-         if (uri && uri.fsPath.replace(/\\/g, '/').includes('/.codebase/')) {
+         if (uri && /\/(\.codebase|\.codebase-memory)\//.test(uri.fsPath.replace(/\\/g, '/'))) {
             return;
          }
          if (!state.isRunning || state.stats.isIndexing) {

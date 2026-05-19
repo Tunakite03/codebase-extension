@@ -15,9 +15,10 @@ export function log(line: string): void {
 }
 
 export function initLogFile(workspace: string): void {
-   const dir = path.join(workspace, '.codebase');
+   const home = process.env.USERPROFILE || process.env.HOME || workspace;
+   const dir = path.join(home, '.cache', 'codebase-memory-mcp', 'logs');
    fs.mkdirSync(dir, { recursive: true });
-   state.logFilePath = path.join(dir, 'codebase-memory.log');
+   state.logFilePath = path.join(dir, `${path.basename(workspace)}.log`);
    try {
       const stat = fs.statSync(state.logFilePath);
       if (stat.size > 1024 * 1024) {

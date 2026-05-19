@@ -15,23 +15,20 @@ function getExtensionVersion(): string {
   }
 }
 
-/** Returns the local cache directory for DB storage: <workspace>/.codebase/data */
-export function getLocalCacheDir(workspace: string): string {
-  return path.join(workspace, ".codebase", "data").replace(/\\/g, "/");
-}
-
-/** Initialize state.cacheDir to the workspace-local .codebase/data directory. */
-export function initCacheDir(workspace: string): void {
-  const dir = getLocalCacheDir(workspace);
-  fs.mkdirSync(dir, { recursive: true });
-  state.cacheDir = dir;
+function getDefaultCacheDir(): string {
+  const envCache = process.env.CBM_CACHE_DIR;
+  if (envCache && envCache.trim().length > 0) {
+    return envCache.replace(/\\/g, "/");
+  }
+  const home = process.env.USERPROFILE || process.env.HOME || "";
+  return path.join(home, ".cache", "codebase-memory-mcp").replace(/\\/g, "/");
 }
 
 export function writeCodebaseDir(workspace: string): void {
   if (!workspace || !state.resolvedBinary) {
     return;
   }
-  const dir = path.join(workspace, ".codebase");
+  const dir = path.join(workspace, ".codebase-memory");
   fs.mkdirSync(dir, { recursive: true });
 
   const normalizedWs = normalizePath(workspace);
@@ -51,13 +48,7 @@ export function writeCodebaseDir(workspace: string): void {
     size_bytes: project?.files || 0,
     last_indexed: state.stats.lastIndexed?.toISOString() || null,
     is_indexing: state.stats.isIndexing,
-    cache_dir: path
-      .join(
-        state.cacheDir || getLocalCacheDir(workspace),
-        ".cache",
-        "codebase-memory-mcp",
-      )
-      .replace(/\\/g, "/"),
+    cache_dir: getDefaultCacheDir(),
   };
   fs.writeFileSync(
     path.join(dir, "status.json"),
@@ -128,10 +119,9 @@ export async function setupAgentConfigs(workspace: string): Promise<void> {
   }
 
   const binaryCmd = state.resolvedBinary;
-
   const vscodeMcp = {
     servers: {
-      "codebase-memory": {
+      "codebase-memo": {
         type: "stdio",
         command: binaryCmd,
         args: [] as string[],
@@ -141,7 +131,7 @@ export async function setupAgentConfigs(workspace: string): Promise<void> {
 
   const cursorMcp = {
     mcpServers: {
-      "codebase-memory": {
+      "codebase-memo": {
         command: binaryCmd,
         args: [] as string[],
       },
@@ -240,7 +230,7 @@ mcp_codebase-memo_get_code_snippet({ "project": "<display_name>", "qualified_nam
 
   const zedSettings = {
     context_servers: {
-      "codebase-memory": {
+      "codebase-memo": {
         command: binaryCmd,
         args: [] as string[],
       },
@@ -248,6 +238,23 @@ mcp_codebase-memo_get_code_snippet({ "project": "<display_name>", "qualified_nam
   };
 
   const CBM_SECTION_MARKER = "## Codebase Memory MCP";
+
+  const removeLegacyServer = (
+    config: Record<string, unknown>,
+    section: "servers" | "mcpServers" | "context_servers",
+  ): Record<string, unknown> => {
+    const sectionValue = config[section];
+    if (
+      typeof sectionValue === "object" &&
+      sectionValue !== null &&
+      !Array.isArray(sectionValue)
+    ) {
+      const servers = { ...(sectionValue as Record<string, unknown>) };
+      delete servers["codebase-memory"];
+      return { ...config, [section]: servers };
+    }
+    return config;
+  };
 
   /** Recursively deep-merge source into target, preserving sibling keys at every level. */
   const deepMerge = (
@@ -285,7 +292,14 @@ mcp_codebase-memo_get_code_snippet({ "project": "<display_name>", "qualified_nam
     let merged = source;
     if (fs.existsSync(filePath)) {
       try {
-        const existing = JSON.parse(fs.readFileSync(filePath, "utf8"));
+        let existing = JSON.parse(fs.readFileSync(filePath, "utf8"));
+        if (file === "mcp.json" && dir.endsWith(".vscode")) {
+          existing = removeLegacyServer(existing, "servers");
+        } else if (file === "mcp.json" && dir.endsWith(".cursor")) {
+          existing = removeLegacyServer(existing, "mcpServers");
+        } else if (file === "settings.json" && dir.endsWith(".zed")) {
+          existing = removeLegacyServer(existing, "context_servers");
+        }
         merged = deepMerge(existing, source);
       } catch {
         merged = source;
@@ -369,11 +383,11 @@ export async function installBinary(): Promise<void> {
     const terminal = vscode.window.createTerminal(DISPLAY_NAME);
     if (process.platform === "win32") {
       terminal.sendText(
-        `powershell -c "irm https://raw.githubusercontent.com/${GITHUB_REPO}/main/install.ps1 | iex"`,
+        `powershell -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/${GITHUB_REPO}/main/scripts/setup-windows.ps1 | iex"`,
       );
     } else {
       terminal.sendText(
-        `curl -fsSL https://raw.githubusercontent.com/${GITHUB_REPO}/main/install.sh | bash`,
+        `curl -fsSL https://raw.githubusercontent.com/${GITHUB_REPO}/main/scripts/setup.sh | bash`,
       );
     }
     terminal.show();
